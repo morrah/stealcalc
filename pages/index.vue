@@ -27,16 +27,35 @@
             hover 
             :items="drop"
             @row-clicked="drop_select">
+            <template slot="HEAD_Chance" slot-scope="data">
+              Base Drop Rate
+            </template>
           </b-table>
         </div>
       </div>
       <div class="chart third-column">
         <plot 
           :chart-data="plotData" 
-          :options="{ responsive: true, maintainAspectRatio: false }" 
+          :options="plotOptions" 
         />
+        <span id="tooltip_plot_dex" class="tooltip-target">
+          <center>
+          <b-form-checkbox id="chk_plot_dex"
+                          v-model="calc_chance_on_dex"
+                          @change="hide_tooltip">
+            Use <b>player_dex</b> as X-axis
+          </b-form-checkbox>
+          </center>
+          <b-tooltip ref="tooltip" target="tooltip_plot_dex" class="tooltip-formula">
+            <b>actual_steal_chance</b> is a function of <b>possible_steal_chance</b> which is a function of (monster_dex, player_dex, steal_level, steal_bonus) where <b>player_dex</b> is in a range of 1..150
+          </b-tooltip>
+        </span>
+
         <b-alert show variant="info" class="info d-flex justify-content-between align-items-center flex-row">
-          <div v-b-modal.modal class="info-faq"><div class="img"></div></div>
+          <div v-b-modal.modal class="info-faq" id="info_img"><div class="img"></div></div>
+          <b-tooltip ref="tooltip" target="info_img" class="tooltip-formula">
+            info
+          </b-tooltip>
           <div class="info-contacts">
             <div>discord: <a href="http://martini.pink/">http://martini.pink</a></div>
             <div>project source: <a href="https://github.com/morrah/stealcalc/">github.com/morrah/stealcalc</a></div>
@@ -101,8 +120,7 @@ export default {
       const player_dex  = parseInt(this.player_dex);
       const steal_level = parseInt(this.steal_level);
       const steal_bonus = parseInt(this.steal_bonus);
-      var steal_chance = (player_dex - monster_dex)/2 + steal_level*6 + 4 + steal_bonus || 0;
-      return steal_chance > 100 ? 100 : (steal_chance < 0 ? 0 : steal_chance)
+      return this.calc_steal_chance(monster_dex, player_dex, steal_level, steal_bonus);
     }
   },
   mounted() {
@@ -120,7 +138,29 @@ export default {
       steal_level: null,
       steal_bonus: 0,
       server_rate: 5,
-      plotData: null
+      plotData: null,
+      calc_chance_on_dex: false,
+      plotOptions: {
+        responsive: true, 
+        maintainAspectRatio: false,
+      }
+    }
+  },
+  watch: {
+    player_dex: function() {
+      this.chk_use_dex_change();
+    },
+    steal_level: function() {
+      this.chk_use_dex_change();
+    },
+    steal_bonus: function() {
+      this.chk_use_dex_change();
+    },
+    server_rate: function() {
+      this.chk_use_dex_change();
+    },
+    calc_chance_on_dex: function() {
+      this.chk_use_dex_change();
     }
   },
   methods: {
@@ -166,6 +206,9 @@ export default {
                                 - getRealHeight(droptable, true)
                                 + "px";
     },
+    hide_tooltip() {
+      this.$root.$emit('bv::hide::tooltip', 'tooltip_plot_dex');
+    },
     dropsToList(list) {
       const that = this;
       if (list === undefined) {
@@ -175,40 +218,89 @@ export default {
         const chance = (Object.values(item)[0] / 100 * that.server_rate).toFixed(2);
         return {
           "Name": Object.keys(item)[0], 
-          "Chance": chance > 100 ? 100 : chance
+          "Chance": chance > 100 ? 100 : chance,
         }
       });
     },
     drop_select(item, index) {
       const chosen_idx = index;
+      this.$store.state.drop_index_selected = index;
       var x_axis = [];
       var y_axis = [];
       var result_chance;
       var accumulator;
+      var steal_chance_iterator;
       const drops = this.dropsToList(this.$store.state.mob_selected.Drops);
-      for (var i=1; i <= 100; i++) {
+      const MAX_X_AXIS = this.calc_chance_on_dex ? 150 : 100;
+      if (this.calc_chance_on_dex) {
+        var monster_dex = parseInt(this.monster_dex);
+        var steal_level = parseInt(this.steal_level);
+        var steal_bonus = parseInt(this.steal_bonus);
+      }
+
+      for (var i=1; i <= MAX_X_AXIS; i++) {
         x_axis.push(i);
+        if (this.calc_chance_on_dex) {
+          steal_chance_iterator = this.calc_steal_chance(monster_dex, i, steal_level, steal_bonus);
+        } else {
+          steal_chance_iterator = i;
+        }
         accumulator = 0;
         for (var drop_idx=0; drop_idx<=chosen_idx; drop_idx++) {
-          result_chance = drops[drop_idx].Chance * i * (1-accumulator) / 100 / 100;
+          result_chance = drops[drop_idx].Chance * steal_chance_iterator * (1-accumulator) / 100 / 100;
           accumulator += result_chance;
         }
         y_axis.push((result_chance * 100).toFixed(2));
       }
       this.fillData(x_axis, y_axis);
     },
+    chk_use_dex_change() {
+      if (this.$store.state.drop_index_selected) {
+        this.drop_select(undefined, this.$store.state.drop_index_selected);
+      }
+    },
+    calc_steal_chance(monster_dex, player_dex, steal_level, steal_bonus) {
+      var steal_chance = (player_dex - monster_dex)/2 + steal_level*6 + 4 + steal_bonus || 0;
+      return steal_chance > 100 ? 100 : (steal_chance < 0 ? 0 : steal_chance)
+    },
     fillData(x_axis, y_axis) {
       const that = this;
+      var x_point;
+      if (this.calc_chance_on_dex) {
+        x_point = this.player_dex;
+      } else {
+        x_point = this.steal_chance;
+      }
+      var datasets = [];
+      datasets.push({
+        label: this.calc_chance_on_dex ? 'player dex' : 'player steal chance',
+        backgroundColor: '#FF0000',
+        data: [{x: Math.round(x_point), y: y_axis[Math.round(x_point)-1]}],
+      });
+      datasets.push({
+        label: '% to steal',
+        backgroundColor: '#ADD8E6',
+        data: y_axis,
+      });
       this.plotData = {
         labels: x_axis,
-        datasets: [
-          {
-            label: '% to steal',
-            backgroundColor: '#ADD8E6',
-            data: y_axis
-          }
-        ]
-      }
+        datasets: datasets
+      };
+      /*
+      this.plotOptions = {
+        responsive: true, 
+        maintainAspectRatio: false,
+        scales: {
+          xAxes: [{
+            display: true,
+            scaleLabel: {
+              display: true,
+              labelString: x_label
+            }
+          }],
+        }
+      };
+    */
     }
   }
 }
