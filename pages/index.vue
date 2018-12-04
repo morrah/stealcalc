@@ -19,7 +19,7 @@
           <b-input-group prepend="Steal bonus">
             <b-form-input v-model="steal_bonus" placeholder="" value="0" />
           </b-input-group>
-          <b-alert show variant="info">Steal chance: {{ steal_chance }}%</b-alert>
+          <b-alert show variant="info">Steal chance: {{ steal_chance }}% ({{ hits_count }} attempts)</b-alert>
         </div>
         <div class="droptable">
           <b-table 
@@ -121,6 +121,9 @@ export default {
       const steal_level = parseInt(this.steal_level);
       const steal_bonus = parseInt(this.steal_bonus);
       return this.calc_steal_chance(monster_dex, player_dex, steal_level, steal_bonus);
+    },
+    hits_count() {
+      return Math.ceil(1 / this.steal_chance * 100);
     }
   },
   mounted() {
@@ -266,12 +269,31 @@ export default {
     fillData(x_axis, y_axis) {
       const that = this;
       var x_point;
+      var max_y = y_axis.reduce(function(a, b){return Math.max(a, b)});
+      var data_max = [];
+      for (var i=0; i<y_axis.length-1; i++) {
+        if (max_y === parseFloat(y_axis[i])) {
+          data_max.push({
+            x: i+1,
+            y: parseFloat(y_axis[i])
+          });
+        }
+      }
       if (this.calc_chance_on_dex) {
         x_point = this.player_dex;
       } else {
         x_point = this.steal_chance;
       }
       var datasets = [];
+      datasets.push({
+        label: this.calc_chance_on_dex ? 'best dex' : 'best steal chance',
+        borderColor: '#00FF00',
+        borderWidth: 1,
+        pointStyle: 'rectRot',
+        pointRadius: 5,
+        pointBorderColor: 'rgb(0, 0, 0)',
+        data: data_max,
+      });
       datasets.push({
         label: this.calc_chance_on_dex ? 'player dex' : 'player steal chance',
         backgroundColor: '#FF0000',
