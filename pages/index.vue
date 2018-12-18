@@ -19,7 +19,7 @@
           <b-input-group prepend="Steal bonus">
             <b-form-input v-model="steal_bonus" placeholder="" value="0" />
           </b-input-group>
-          <b-alert show variant="info">Steal chance: {{ steal_chance }}% ({{ hits_count }} attempts)</b-alert>
+          <b-alert show variant="info">Steal chance: {{ steal_chance }}%</b-alert>
         </div>
         <div class="droptable">
           <b-table 
@@ -340,6 +340,10 @@ body {
 
 tbody > tr {
   cursor: pointer;
+}
+
+.table-hover tbody tr:hover {
+    background-color: rgb(173, 216, 230);
 }
 
 .body-container {
